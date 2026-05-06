@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b74c9" />
+  <title>颜色分类</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <section id="startScreen" class="screen start-screen">
+      <h1>颜色分类</h1>
+      <p class="hero-copy">把相同颜色的液体归到同一个试管里</p>
+      <div class="mode-grid">
+        <button id="btnStartGame" class="mode-button" type="button">
+          <span>开始游戏</span>
+          <strong>▶</strong>
+          <small id="startProgress">第 1 关</small>
+        </button>
+        <button id="btnLevelSelect" class="mode-button is-alt" type="button">
+          <span>关卡总览</span>
+          <strong>☰</strong>
+          <small>200 关</small>
+        </button>
+      </div>
+      <div class="start-footer">
+        <button id="btnSettings" class="secondary-button footer-btn" type="button">设置</button>
+      </div>
+    </section>
+
+    <section id="levelScreen" class="screen level-screen" hidden>
+      <header class="game-header">
+        <button id="levelBackButton" class="secondary-button header-btn" type="button">返回</button>
+        <div class="level-title-block">
+          <p class="eyebrow">颜色分类</p>
+          <h2>选择关卡</h2>
+        </div>
+      </header>
+      <p class="message-text">通关前一关后解锁下一关</p>
+      <div id="levelGrid" class="level-grid"></div>
+      <nav class="level-pager">
+        <button id="prevPageBtn" class="secondary-button" type="button">上一页</button>
+        <button id="curPageBtn" class="secondary-button" type="button">1 / 10</button>
+        <button id="nextPageBtn" class="secondary-button" type="button">下一页</button>
+      </nav>
+    </section>
+
+    <section id="gameScreen" class="screen game-screen" hidden>
+      <header class="game-header">
+        <button id="btnBack" class="secondary-button header-btn" type="button">返回</button>
+        <div class="level-title-block">
+          <h2 id="gameLevelTitle">第 1 关</h2>
+        </div>
+        <button id="btnMenu" class="secondary-button header-btn" type="button">菜单</button>
+      </header>
+      <div class="status-panel">
+        <div class="stat-block">
+          <span class="stat-label">步数</span>
+          <strong id="stepCount">0</strong>
+        </div>
+        <div class="stat-block">
+          <span class="stat-label">最佳</span>
+          <strong id="bestCount">—</strong>
+        </div>
+      </div>
+      <div class="tubes-area">
+        <div id="tubesContainer" class="tubes-container"></div>
+      </div>
+      <div class="action-row">
+        <button id="btnUndo" class="secondary-button action-btn" type="button">撤销</button>
+        <button id="btnReset" class="secondary-button action-btn" type="button">重置</button>
+      </div>
+    </section>
+
+    <section id="settingsScreen" class="screen settings-screen" hidden>
+      <header class="game-header">
+        <button id="settingsBack" class="secondary-button header-btn" type="button">返回</button>
+        <div class="level-title-block">
+          <h2>设置</h2>
+        </div>
+      </header>
+      <div class="settings-body">
+        <div class="settings-item">
+          <span>音效</span>
+          <button id="btnSoundToggle" class="secondary-button" type="button">开</button>
+        </div>
+        <div class="settings-item">
+          <span>重置全部进度</span>
+          <button id="btnResetProgress" class="danger-button" type="button">重置</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="winOverlay" class="overlay" hidden>
+      <div class="win-card">
+        <div class="win-emoji">🎉</div>
+        <h2>恭喜通关！</h2>
+        <div class="win-stats">
+          <div class="stat-block"><span class="stat-label">本关步数</span><strong id="winSteps">0</strong></div>
+          <div class="stat-block"><span class="stat-label">最佳纪录</span><strong id="winBest">—</strong></div>
+        </div>
+        <button id="btnNextLevel" class="primary-button" type="button">下一关</button>
+        <button id="btnReplay" class="secondary-button full-btn" type="button">重玩本关</button>
+      </div>
+    </div>
+
+    <div id="menuOverlay" class="overlay" hidden>
+      <div class="menu-card">
+        <button id="btnMenuResume" class="primary-button full-btn" type="button">继续游戏</button>
+        <button id="btnMenuRestart" class="secondary-button full-btn" type="button">重新开始</button>
+        <button id="btnMenuHome" class="secondary-button full-btn" type="button">返回主页</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="./game.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    var api = window.WaterSort;
+    if (!api) { alert("游戏引擎加载失败"); return; }
+
+    var TOTAL_LEVELS = 200;
+    var LEVELS_PER_PAGE = 20;
+
+    var Tube = api.Tube;
+    var TUBE_CAPACITY = api.TUBE_CAPACITY;
+    var NUM_TUBES = api.NUM_TUBES;
+    var COLORS = api.COLORS;
+    var isWon = api.isWon;
+    var cloneTubes = api.cloneTubes;
+    var tubesToData = api.tubesToData;
+    var dataToTubes = api.dataToTubes;
+    var generateLevelQuick = api.generateLevelQuick;
+
+    var STORAGE_KEY = "water_sort_progress";
+
+    var state = {
+      tubes: [],
+      selectedIdx: -1,
+      steps: 0,
+      undoCount: 0,
+      history: [],
+      initialData: null,
+      currentLevel: 1,
+      maxUnlocked: 1,
+      soundEnabled: true,
+      bestSteps: {},
+      bestUndos: {}
+    };
+
+    var levelPage = 0;
+
+    function $(id) { return document.getElementById(id); }
+
+    var el = {
+      startScreen: $("startScreen"),
+      levelScreen: $("levelScreen"),
+      gameScreen: $("gameScreen"),
+      settingsScreen: $("settingsScreen"),
+      startProgress: $("startProgress"),
+      levelGrid: $("levelGrid"),
+      prevPageBtn: $("prevPageBtn"),
+      curPageBtn: $("curPageBtn"),
+      nextPageBtn: $("nextPageBtn"),
+      tubesContainer: $("tubesContainer"),
+      stepCount: $("stepCount"),
+      bestCount: $("bestCount"),
+      gameLevelTitle: $("gameLevelTitle"),
+      winOverlay: $("winOverlay"),
+      winSteps: $("winSteps"),
+      winBest: $("winBest"),
+      menuOverlay: $("menuOverlay"),
+      toast: $("toast"),
+      btnSoundToggle: $("btnSoundToggle")
+    };
+
+    var audioCtx = null;
+    function getAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+    function playBeep(freq, dur, type) {
+      if (!state.soundEnabled) return;
+      try {
+        var ctx = getAudioCtx();
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = type || "sine";
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + dur);
+      } catch (e) {}
+    }
+    function playClick() { playBeep(800, 0.08, "sine"); }
+    function playPour() { playBeep(300, 0.2, "triangle"); }
+    function playError() { playBeep(150, 0.25, "square"); }
+    function playWin() {
+      playBeep(523, 0.15, "sine");
+      setTimeout(function () { playBeep(659, 0.15, "sine"); }, 150);
+      setTimeout(function () { playBeep(784, 0.2, "sine"); }, 300);
+      setTimeout(function () { playBeep(1047, 0.3, "sine"); }, 450);
+    }
+
+    function loadProgress() {
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          var d = JSON.parse(raw);
+          state.currentLevel = d.currentLevel || 1;
+          state.maxUnlocked = d.maxUnlocked || 1;
+          state.soundEnabled = d.soundEnabled !== false;
+          state.bestSteps = d.bestSteps || {};
+          state.bestUndos = d.bestUndos || {};
+        }
+      } catch (e) {}
+    }
+
+    function saveProgress() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          currentLevel: state.currentLevel,
+          maxUnlocked: state.maxUnlocked,
+          soundEnabled: state.soundEnabled,
+          bestSteps: state.bestSteps,
+          bestUndos: state.bestUndos
+        }));
+      } catch (e) {}
+    }
+
+    var currentScreen = "startScreen";
+
+    function showScreen(id, direction) {
+      var dir = direction || "forward";
+      var oldNode = $(currentScreen);
+      var newNode = $(id);
+
+      ["startScreen", "levelScreen", "gameScreen", "settingsScreen"].forEach(function (s) {
+        var node = $(s);
+        if (s === id) node.removeAttribute("hidden");
+        else node.setAttribute("hidden", "");
+      });
+
+      if (currentScreen !== id) {
+        newNode.classList.remove("slide-in-right", "slide-out-left", "slide-in-left", "slide-out-right");
+        void newNode.offsetWidth;
+        if (dir === "forward") {
+          newNode.classList.add("slide-in-right");
+        } else {
+          newNode.classList.add("slide-in-left");
+        }
+        currentScreen = id;
+        if (id !== "startScreen") {
+          history.pushState({ screen: id }, "");
+        }
+      }
+    }
+
+    function goBack() {
+      if (currentScreen === "startScreen") return;
+      if (currentScreen === "gameScreen") {
+        if (!el.menuOverlay.hasAttribute("hidden")) {
+          el.menuOverlay.setAttribute("hidden", "");
+          return;
+        }
+        if (!el.winOverlay.hasAttribute("hidden")) {
+          el.winOverlay.setAttribute("hidden", "");
+          return;
+        }
+      }
+      showScreen("startScreen");
+      updateStartScreen();
+      saveProgress();
+    }
+
+    window.addEventListener("popstate", function (e) {
+      if (currentScreen === "startScreen") {
+        history.pushState(null, "");
+        return;
+      }
+      if (currentScreen === "gameScreen") {
+        if (!el.menuOverlay.hasAttribute("hidden")) {
+          el.menuOverlay.setAttribute("hidden", "");
+          history.pushState({ screen: "gameScreen" }, "");
+          return;
+        }
+        if (!el.winOverlay.hasAttribute("hidden")) {
+          el.winOverlay.setAttribute("hidden", "");
+          history.pushState({ screen: "gameScreen" }, "");
+          return;
+        }
+      }
+      currentScreen = "startScreen";
+      ["startScreen", "levelScreen", "gameScreen", "settingsScreen"].forEach(function (s) {
+        var node = $(s);
+        if (s === "startScreen") node.removeAttribute("hidden");
+        else node.setAttribute("hidden", "");
+      });
+      var mainNode = $("startScreen");
+      mainNode.classList.remove("slide-in-right", "slide-out-left", "slide-in-left", "slide-out-right");
+      void mainNode.offsetWidth;
+      mainNode.classList.add("slide-in-left");
+      updateStartScreen();
+      saveProgress();
+    });
+
+    function showToast(msg) {
+      el.toast.textContent = msg;
+      el.toast.removeAttribute("hidden");
+      el.toast.classList.remove("toast-show");
+      void el.toast.offsetWidth;
+      el.toast.classList.add("toast-show");
+      clearTimeout(el.toast._t);
+      el.toast._t = setTimeout(function () {
+        el.toast.classList.remove("toast-show");
+        setTimeout(function () { el.toast.setAttribute("hidden", ""); }, 300);
+      }, 1500);
+    }
+
+    function updateStartScreen() {
+      el.startProgress.textContent = "第 " + state.maxUnlocked + " 关";
+    }
+
+    function renderLevelGrid() {
+      var totalPages = Math.ceil(TOTAL_LEVELS / LEVELS_PER_PAGE);
+      levelPage = Math.max(0, Math.min(levelPage, totalPages - 1));
+      var start = levelPage * LEVELS_PER_PAGE + 1;
+      var end = Math.min(start + LEVELS_PER_PAGE - 1, TOTAL_LEVELS);
+
+      el.levelGrid.innerHTML = "";
+      for (var n = start; n <= end; n++) {
+        var btn = document.createElement("button");
+        btn.className = "level-button";
+        btn.textContent = n;
+        btn.setAttribute("data-level", n);
+
+        var best = state.bestSteps["level_" + n];
+        if (best !== undefined) {
+          btn.classList.add("is-cleared");
+        } else if (n === state.maxUnlocked) {
+          btn.classList.add("is-next");
+        } else if (n > state.maxUnlocked) {
+          btn.classList.add("is-locked");
+        }
+
+        if (n <= state.maxUnlocked) {
+          btn.addEventListener("click", (function (lvl) {
+            return function () { playClick(); startLevel(lvl); };
+          })(n));
+        }
+
+        el.levelGrid.appendChild(btn);
+      }
+
+      el.curPageBtn.textContent = (levelPage + 1) + " / " + totalPages;
+      el.prevPageBtn.disabled = levelPage <= 0;
+      el.nextPageBtn.disabled = levelPage >= totalPages - 1;
+    }
+
+    function renderTubes() {
+      var container = el.tubesContainer;
+      container.innerHTML = "";
+
+      for (var i = 0; i < state.tubes.length; i++) {
+        var tube = state.tubes[i];
+        var wrapper = document.createElement("div");
+        wrapper.className = "tube-wrapper";
+        wrapper.setAttribute("data-index", i);
+
+        var glass = document.createElement("div");
+        glass.className = "tube-glass";
+
+        var liquid = document.createElement("div");
+        liquid.className = "tube-liquid";
+
+        for (var layer = 0; layer < TUBE_CAPACITY; layer++) {
+          var cell = document.createElement("div");
+          cell.className = "tube-cell";
+          var colorIdx = layer < tube.colors.length ? tube.colors[layer] : null;
+          if (colorIdx !== null) {
+            cell.classList.add("filled");
+            cell.style.backgroundColor = COLORS[colorIdx];
+          }
+          liquid.appendChild(cell);
+        }
+
+        glass.appendChild(liquid);
+        wrapper.appendChild(glass);
+
+        if (i === state.selectedIdx) {
+          wrapper.classList.add("selected");
+        }
+
+        wrapper.addEventListener("click", (function (idx) {
+          return function () { onTubeClick(idx); };
+        })(i));
+
+        container.appendChild(wrapper);
+      }
+    }
+
+    function updateGameUI() {
+      el.stepCount.textContent = state.steps;
+      var key = "level_" + state.currentLevel;
+      var best = state.bestSteps[key];
+      if (best !== undefined) {
+        var undos = state.bestUndos[key] || 0;
+        el.bestCount.textContent = best + "步/" + undos + "撤";
+      } else {
+        el.bestCount.textContent = "—";
+      }
+      el.gameLevelTitle.textContent = "第 " + state.currentLevel + " 关";
+    }
+
+    function startLevel(levelNum) {
+      state.currentLevel = levelNum;
+      var generated = generateLevelQuick(levelNum);
+      state.tubes = cloneTubes(generated.tubes);
+      state.initialData = tubesToData(state.tubes);
+      state.steps = 0;
+      state.undoCount = 0;
+      state.selectedIdx = -1;
+      state.history = [];
+
+      showScreen("gameScreen");
+      renderTubes();
+      updateGameUI();
+    }
+
+    function pourLiquid(srcIdx, dstIdx) {
+      var src = state.tubes[srcIdx];
+      var dst = state.tubes[dstIdx];
+      if (!dst.canReceive(src.topColor)) return false;
+
+      var moveCount = Math.min(src.topCount, dst.availableSpace);
+      if (moveCount === 0) return false;
+
+      state.history.push({
+        tubesData: tubesToData(state.tubes),
+        steps: state.steps,
+        undoCount: state.undoCount,
+        selectedIdx: state.selectedIdx
+      });
+
+      state.tubes[dstIdx].pourFrom(state.tubes[srcIdx]);
+      state.steps++;
+      state.selectedIdx = -1;
+
+      playPour();
+      renderTubes();
+      updateGameUI();
+
+      if (isWon(state.tubes)) onWin();
+      return true;
+    }
+
+    function onTubeClick(idx) {
+      if (!el.winOverlay.hasAttribute("hidden")) return;
+      if (!el.menuOverlay.hasAttribute("hidden")) return;
+
+      playClick();
+
+      if (state.selectedIdx === -1) {
+        if (state.tubes[idx].isEmpty) return;
+        state.selectedIdx = idx;
+        renderTubes();
+      } else if (state.selectedIdx === idx) {
+        state.selectedIdx = -1;
+        renderTubes();
+      } else {
+        var success = pourLiquid(state.selectedIdx, idx);
+        if (!success) {
+          playError();
+          shakeTube(idx);
+          state.selectedIdx = -1;
+          renderTubes();
+        }
+      }
+    }
+
+    function shakeTube(idx) {
+      var tubeEl = el.tubesContainer.querySelector('[data-index="' + idx + '"]');
+      if (!tubeEl) return;
+      tubeEl.classList.add("shake");
+      tubeEl.addEventListener("animationend", function handler() {
+        tubeEl.classList.remove("shake");
+        tubeEl.removeEventListener("animationend", handler);
+      });
+    }
+
+    function onWin() {
+      playWin();
+      var key = "level_" + state.currentLevel;
+      var prev = state.bestSteps[key];
+      if (prev === undefined || state.steps < prev) {
+        state.bestSteps[key] = state.steps;
+        state.bestUndos[key] = state.undoCount;
+      }
+      if (state.currentLevel >= state.maxUnlocked && state.currentLevel < TOTAL_LEVELS) {
+        state.maxUnlocked = state.currentLevel + 1;
+      }
+      saveProgress();
+
+      el.winSteps.textContent = state.steps;
+      var bestS = state.bestSteps[key];
+      var bestU = state.bestUndos[key] || 0;
+      el.winBest.textContent = bestS + "步 / " + bestU + "次撤销";
+      el.winOverlay.removeAttribute("hidden");
+      history.pushState({ screen: "gameScreen", overlay: "win" }, "");
+
+      setTimeout(function () {
+        var tubes = el.tubesContainer.querySelectorAll(".tube-wrapper");
+        tubes.forEach(function (t, i) {
+          setTimeout(function () {
+            t.classList.add("celebrate");
+            setTimeout(function () { t.classList.remove("celebrate"); }, 500);
+          }, i * 120);
+        });
+      }, 200);
+    }
+
+    function undo() {
+      if (state.history.length === 0) { showToast("没有可撤销的操作"); return; }
+      var snap = state.history.pop();
+      state.tubes = dataToTubes(snap.tubesData);
+      state.steps = snap.steps;
+      state.undoCount++;
+      state.selectedIdx = -1;
+      renderTubes();
+      updateGameUI();
+      playClick();
+    }
+
+    function resetLevel() {
+      if (!state.initialData) return;
+      state.tubes = dataToTubes(state.initialData);
+      state.steps = 0;
+      state.undoCount = 0;
+      state.selectedIdx = -1;
+      state.history = [];
+      renderTubes();
+      updateGameUI();
+      playClick();
+    }
+
+    function init() {
+      loadProgress();
+      updateStartScreen();
+      el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+
+      $("btnStartGame").addEventListener("click", function () {
+        playClick();
+        startLevel(state.maxUnlocked);
+      });
+
+      $("btnLevelSelect").addEventListener("click", function () {
+        playClick();
+        levelPage = Math.floor((state.maxUnlocked - 1) / LEVELS_PER_PAGE);
+        renderLevelGrid();
+        showScreen("levelScreen");
+      });
+
+      $("levelBackButton").addEventListener("click", function () {
+        playClick();
+        history.back();
+      });
+
+      el.prevPageBtn.addEventListener("click", function () {
+        if (levelPage > 0) { levelPage--; renderLevelGrid(); playClick(); }
+      });
+      el.nextPageBtn.addEventListener("click", function () {
+        levelPage++; renderLevelGrid(); playClick();
+      });
+      el.curPageBtn.addEventListener("click", function () {
+        levelPage = Math.floor((state.maxUnlocked - 1) / LEVELS_PER_PAGE);
+        renderLevelGrid();
+        playClick();
+      });
+
+      $("btnBack").addEventListener("click", function () {
+        playClick();
+        history.back();
+      });
+
+      $("btnMenu").addEventListener("click", function () {
+        playClick();
+        el.menuOverlay.removeAttribute("hidden");
+        history.pushState({ screen: "gameScreen", overlay: "menu" }, "");
+      });
+
+      $("btnMenuResume").addEventListener("click", function () {
+        playClick();
+        el.menuOverlay.setAttribute("hidden", "");
+        history.back();
+      });
+
+      $("btnMenuRestart").addEventListener("click", function () {
+        playClick();
+        el.menuOverlay.setAttribute("hidden", "");
+        resetLevel();
+      });
+
+      $("btnMenuHome").addEventListener("click", function () {
+        playClick();
+        el.menuOverlay.setAttribute("hidden", "");
+        history.back();
+      });
+
+      $("btnUndo").addEventListener("click", undo);
+      $("btnReset").addEventListener("click", resetLevel);
+
+      $("gameScreen").querySelector(".tubes-area").addEventListener("click", function (e) {
+        if (e.target.closest(".tube-wrapper")) return;
+        if (state.selectedIdx !== -1) {
+          state.selectedIdx = -1;
+          renderTubes();
+        }
+      });
+
+      $("btnNextLevel").addEventListener("click", function () {
+        el.winOverlay.setAttribute("hidden", "");
+        var next = state.currentLevel + 1;
+        if (next > TOTAL_LEVELS) {
+          showToast("已通关全部 " + TOTAL_LEVELS + " 关！");
+          showScreen("startScreen");
+          updateStartScreen();
+          return;
+        }
+        startLevel(next);
+      });
+
+      $("btnReplay").addEventListener("click", function () {
+        el.winOverlay.setAttribute("hidden", "");
+        resetLevel();
+      });
+
+      $("btnSettings").addEventListener("click", function () {
+        playClick();
+        showScreen("settingsScreen");
+        el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+      });
+
+      $("settingsBack").addEventListener("click", function () {
+        playClick();
+        history.back();
+      });
+
+      el.btnSoundToggle.addEventListener("click", function () {
+        state.soundEnabled = !state.soundEnabled;
+        el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+        saveProgress();
+        if (state.soundEnabled) playClick();
+      });
+
+      $("btnResetProgress").addEventListener("click", function () {
+        if (confirm("确定要重置全部进度吗？此操作不可撤销。")) {
+          state.currentLevel = 1;
+          state.maxUnlocked = 1;
+          state.bestSteps = {};
+          state.bestUndos = {};
+          localStorage.removeItem(STORAGE_KEY);
+          showToast("进度已重置");
+          updateStartScreen();
+        }
+      });
+
+      el.winOverlay.addEventListener("click", function (e) {
+        if (e.target === el.winOverlay) el.winOverlay.setAttribute("hidden", "");
+      });
+
+      el.menuOverlay.addEventListener("click", function (e) {
+        if (e.target === el.menuOverlay) el.menuOverlay.setAttribute("hidden", "");
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+</body>
+</html>
