@@ -375,7 +375,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   column-gap: clamp(4px, 1.5vw, 10px);
-  row-gap: clamp(28px, 8vw, 48px);
+  row-gap: clamp(40px, 12vw, 64px);
   width: min(100%, 380px);
   margin: 0 auto;
 }
@@ -479,8 +479,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  padding: 12px 0;
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding: 20px 0;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
 }
 
 /* ===== Settings ===== */
@@ -586,7 +586,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   .stat-block { min-height: 56px; border-radius: 14px; padding: 8px 6px; }
   .stat-block strong { font-size: clamp(20px, 5.5vw, 28px); }
   .stat-label { font-size: clamp(15px, 4vw, 18px); }
-  .tubes-container { width: min(100%, 340px); column-gap: clamp(3px, 1.2vw, 8px); row-gap: clamp(24px, 7vw, 40px); }
+  .tubes-container { width: min(100%, 340px); column-gap: clamp(3px, 1.2vw, 8px); row-gap: clamp(32px, 10vw, 52px); }
   .tube-glass { border-radius: 0 0 12px 12px; }
   .tube-glass::before { height: 8px; border-radius: 5px 5px 0 0; }
   .header-btn { padding: 8px 14px; font-size: clamp(14px, 3.8vw, 16px); min-height: 44px; }
@@ -599,7 +599,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 390px) {
   .level-grid { width: min(100%, 350px); gap: 6px; }
   .level-button { min-height: 42px; border-radius: 13px; font-size: clamp(20px, 6vw, 30px); }
-  .tubes-container { width: min(100%, 310px); column-gap: 3px; row-gap: clamp(20px, 6vw, 34px); }
+  .tubes-container { width: min(100%, 310px); column-gap: 3px; row-gap: clamp(28px, 8vw, 44px); }
   .tube-glass { border-radius: 0 0 10px 10px; }
   .mode-button { min-height: 84px; border-radius: 18px; }
   .mode-button strong { font-size: clamp(36px, 13vw, 52px); }

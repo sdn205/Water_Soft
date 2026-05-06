@@ -413,7 +413,7 @@
       var best = state.bestSteps[key];
       if (best !== undefined) {
         var undos = state.bestUndos[key] || 0;
-        el.bestCount.textContent = best + "步/" + undos + "撤";
+        el.bestCount.textContent = best + "步/" + undos + "撤销";
       } else {
         el.bestCount.textContent = "—";
       }
@@ -512,7 +512,7 @@
       el.winSteps.textContent = state.steps;
       var bestS = state.bestSteps[key];
       var bestU = state.bestUndos[key] || 0;
-      el.winBest.textContent = bestS + "步 / " + bestU + "次撤销";
+      el.winBest.textContent = bestS + "步 / " + bestU + "撤销";
       el.winOverlay.removeAttribute("hidden");
       history.pushState({ screen: "gameScreen", overlay: "win" }, "");
 
