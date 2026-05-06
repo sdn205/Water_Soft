@@ -204,11 +204,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .danger-button:active { background: rgba(180,35,24,0.16); }
 
 .header-btn {
-  padding: 10px 18px;
-  font-size: clamp(15px, 4vw, 17px);
-  font-weight: 700;
-  border-radius: 14px;
-  min-height: 48px;
+  padding: 0 18px;
+  font-size: clamp(17px, 4.5vw, 19px);
+  font-weight: 800;
+  border-radius: 18px;
+  min-height: 52px;
+  min-width: 86px;
   white-space: nowrap;
 }
 
@@ -589,7 +590,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   .tubes-container { width: min(100%, 340px); column-gap: clamp(3px, 1.2vw, 8px); row-gap: clamp(40px, 12vw, 60px); }
   .tube-glass { border-radius: 0 0 12px 12px; }
   .tube-glass::before { height: 8px; border-radius: 5px 5px 0 0; }
-  .header-btn { padding: 8px 14px; font-size: clamp(14px, 3.8vw, 16px); min-height: 44px; }
+  .header-btn { padding: 0 14px; font-size: clamp(16px, 4.2vw, 18px); min-height: 48px; min-width: 72px; }
   .footer-btn { padding: 12px 28px; font-size: clamp(15px, 4vw, 17px); min-height: 50px; }
   .full-btn { padding: 14px 18px; font-size: clamp(17px, 4.5vw, 19px); min-height: 52px; }
   .action-btn { padding: 12px 14px; font-size: clamp(16px, 4vw, 18px); min-height: 48px; }
