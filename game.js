@@ -168,6 +168,27 @@
     return new Uint32Array(arr);
   }
 
+  function getTubeVal(arr, idx) {
+    const wordIdx = (idx * 16) >>> 5;
+    const bitOff = (idx * 16) & 31;
+    let val = (arr[wordIdx] >>> bitOff) & TUBE_MASK;
+    if (bitOff > 16) {
+      val |= (arr[wordIdx + 1] << (32 - bitOff)) & TUBE_MASK;
+    }
+    return val;
+  }
+
+  function setTubeVal(arr, idx, val) {
+    const wordIdx = (idx * 16) >>> 5;
+    const bitOff = (idx * 16) & 31;
+    arr[wordIdx] &= ~(TUBE_MASK << bitOff);
+    arr[wordIdx] |= (val & TUBE_MASK) << bitOff;
+    if (bitOff > 16) {
+      arr[wordIdx + 1] &= ~(TUBE_MASK >>> (32 - bitOff));
+      arr[wordIdx + 1] |= (val & TUBE_MASK) >>> (32 - bitOff);
+    }
+  }
+
   const COMPLETION_STATE = (function () {
     const e = new Uint32Array(5);
     for (let i = 0; i < NUM_COLORS; i++) {
@@ -193,33 +214,44 @@
     }
     return e;
   })();
-  const COMPLETION_KEY = stateKey(COMPLETION_STATE);
 
-  function getTubeVal(arr, idx) {
-    const wordIdx = (idx * 16) >>> 5;
-    const bitOff = (idx * 16) & 31;
-    let val = (arr[wordIdx] >>> bitOff) & TUBE_MASK;
-    if (bitOff > 16) {
-      val |= (arr[wordIdx + 1] << (32 - bitOff)) & TUBE_MASK;
+  function canonicalKeyFromTubeVals(tubeVals) {
+    const sorted = [...tubeVals].sort((a, b) => a - b);
+    let key = 0n;
+    for (let i = 0; i < sorted.length; i++) {
+      key = (key << 16n) | BigInt(sorted[i] & TUBE_MASK);
     }
-    return val;
+    return key;
   }
 
-  function setTubeVal(arr, idx, val) {
-    const wordIdx = (idx * 16) >>> 5;
-    const bitOff = (idx * 16) & 31;
-    arr[wordIdx] &= ~(TUBE_MASK << bitOff);
-    arr[wordIdx] |= (val & TUBE_MASK) << bitOff;
-    if (bitOff > 16) {
-      arr[wordIdx + 1] &= ~(TUBE_MASK >>> (32 - bitOff));
-      arr[wordIdx + 1] |= (val & TUBE_MASK) >>> (32 - bitOff);
+  function canonicalStateKey(arr) {
+    const tubeVals = new Array(NUM_TUBES);
+    for (let i = 0; i < NUM_TUBES; i++) {
+      tubeVals[i] = getTubeVal(arr, i);
     }
+    return canonicalKeyFromTubeVals(tubeVals);
+  }
+
+  const COMPLETION_KEY = canonicalStateKey(COMPLETION_STATE);
+
+  function packedStateIsSolved(arr) {
+    let seenMask = 0;
+    for (let i = 0; i < NUM_TUBES; i++) {
+      const val = getTubeVal(arr, i);
+      if (tubeIsEmpty(val)) continue;
+      if (!tubeIsComplete(val)) return false;
+      const color = val & 0xF;
+      const bit = 1 << color;
+      if ((seenMask & bit) !== 0) return false;
+      seenMask |= bit;
+    }
+    return seenMask === ((1 << NUM_COLORS) - 1);
   }
 
   function bfsSolveFast(tubes, maxSteps, findPaths) {
     const startArr = encodeState(tubes);
-    const startKey = stateKey(startArr);
-    if (startKey === COMPLETION_KEY) {
+    const startKey = canonicalStateKey(startArr);
+    if (packedStateIsSolved(startArr)) {
       return { solvable: true, steps: 0, moves: [], pathCount: 1 };
     }
 
@@ -227,19 +259,22 @@
     visited.set(startKey, { depth: 0, parent: null, srcIdx: -1, dstIdx: -1 });
 
     const queue = [startArr];
+    const queueKeys = [startKey];
     let qHead = 0;
-    let minSteps = maxSteps || 60;
+    let minSteps = maxSteps || 80;
     let found = false;
     const solutions = [];
-    const MAX_QUEUE = 500000;
+    const solutionSet = new Set();
+    const MAX_QUEUE = 1500000;
 
     while (qHead < queue.length) {
       if (queue.length > MAX_QUEUE) {
         return { solvable: false, steps: -1, moves: [], pathCount: 0, overflow: true };
       }
 
-      const cur = queue[qHead++];
-      const curKey = stateKey(cur);
+      const cur = queue[qHead];
+      const curKey = queueKeys[qHead];
+      qHead++;
       const curInfo = visited.get(curKey);
       const depth = curInfo.depth;
 
@@ -248,6 +283,7 @@
       for (let srcIdx = 0; srcIdx < NUM_TUBES; srcIdx++) {
         const srcVal = getTubeVal(cur, srcIdx);
         if (tubeIsEmpty(srcVal)) continue;
+        if (tubeIsComplete(srcVal)) continue;
 
         for (let dstIdx = 0; dstIdx < NUM_TUBES; dstIdx++) {
           if (srcIdx === dstIdx) continue;
@@ -260,38 +296,32 @@
           setTubeVal(next, srcIdx, result.src);
           setTubeVal(next, dstIdx, result.dst);
 
-          const nextKey = stateKey(next);
+          const nextKey = canonicalStateKey(next);
 
           if (!visited.has(nextKey)) {
+            const nextDepth = depth + 1;
             visited.set(nextKey, {
-              depth: depth + 1,
+              depth: nextDepth,
               parent: curKey,
               srcIdx,
               dstIdx
             });
 
-            if (nextKey === COMPLETION_KEY) {
-              const steps = depth + 1;
+            if (packedStateIsSolved(next) || nextKey === COMPLETION_KEY) {
+              const steps = nextDepth;
               if (!found || steps < minSteps) {
                 minSteps = steps;
                 solutions.length = 0;
+                solutionSet.clear();
                 found = true;
               }
-              if (steps === minSteps) {
+              if (steps === minSteps && !solutionSet.has(nextKey)) {
+                solutionSet.add(nextKey);
                 solutions.push(nextKey);
               }
-            } else if (depth + 1 < minSteps) {
+            } else if (nextDepth < minSteps) {
               queue.push(next);
-            }
-          } else if (nextKey === COMPLETION_KEY) {
-            const steps = depth + 1;
-            if (!found || steps < minSteps) {
-              minSteps = steps;
-              solutions.length = 0;
-              found = true;
-            }
-            if (steps === minSteps) {
-              solutions.push(nextKey);
+              queueKeys.push(nextKey);
             }
           }
         }
@@ -341,7 +371,7 @@
       solvable: true,
       steps: minSteps,
       moves: allPaths[0],
-      pathCount: allPaths.length,
+      pathCount: allPaths.length || 1,
       allPaths
     };
   }
