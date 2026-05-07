@@ -150,7 +150,9 @@
       maxUnlocked: 1,
       soundEnabled: true,
       bestSteps: {},
-      bestUndos: {}
+      bestUndos: {},
+      isAnimatingPour: false,
+      pourTimerId: 0
     };
 
     var levelPage = 0;
@@ -329,6 +331,25 @@
       el.startProgress.textContent = "第 " + state.maxUnlocked + " 关";
     }
 
+    function finishPourAnimation(options) {
+      options = options || {};
+      if (!state.isAnimatingPour) return false;
+      if (state.pourTimerId) {
+        clearTimeout(state.pourTimerId);
+        state.pourTimerId = 0;
+      }
+      state.isAnimatingPour = false;
+      var won = isWon(state.tubes);
+      if (!options.skipRender || won) {
+        renderTubes();
+      }
+      if (won) {
+        onWin();
+        return true;
+      }
+      return false;
+    }
+
     function renderLevelGrid() {
       var totalPages = Math.ceil(TOTAL_LEVELS / LEVELS_PER_PAGE);
       levelPage = Math.max(0, Math.min(levelPage, totalPages - 1));
@@ -365,15 +386,18 @@
       el.nextPageBtn.disabled = levelPage >= totalPages - 1;
     }
 
-    function renderTubes() {
+    function renderTubes(pourFx) {
       var container = el.tubesContainer;
       container.innerHTML = "";
+      var fx = pourFx || null;
 
       for (var i = 0; i < state.tubes.length; i++) {
         var tube = state.tubes[i];
         var wrapper = document.createElement("div");
         wrapper.className = "tube-wrapper";
         wrapper.setAttribute("data-index", i);
+        wrapper.setAttribute("role", "button");
+        wrapper.setAttribute("aria-label", "试管 " + (i + 1));
 
         var glass = document.createElement("div");
         glass.className = "tube-glass";
@@ -386,8 +410,18 @@
           cell.className = "tube-cell";
           var colorIdx = layer < tube.colors.length ? tube.colors[layer] : null;
           if (colorIdx !== null) {
+            var sameBelow = layer > 0 && tube.colors[layer - 1] === colorIdx;
+            var sameAbove = layer + 1 < tube.colors.length && tube.colors[layer + 1] === colorIdx;
             cell.classList.add("filled");
             cell.style.backgroundColor = COLORS[colorIdx];
+            cell.style.setProperty("--liquid-color", COLORS[colorIdx]);
+            if (layer === 0) cell.classList.add("bottom-layer");
+            if (layer === tube.colors.length - 1) cell.classList.add("top-layer");
+            if (sameBelow) cell.classList.add("joined-below");
+            if (sameAbove) cell.classList.add("joined-above");
+            if (fx && fx.dstIdx === i && layer >= fx.startLayer && layer < fx.startLayer + fx.moveCount) {
+              cell.classList.add("just-poured");
+            }
           }
           liquid.appendChild(cell);
         }
@@ -399,8 +433,37 @@
           wrapper.classList.add("selected");
         }
 
-        wrapper.addEventListener("click", (function (idx) {
-          return function () { onTubeClick(idx); };
+        if (fx && fx.srcIdx === i) {
+          var srcCol = fx.srcIdx % 5;
+          var dstCol = fx.dstIdx % 5;
+          wrapper.classList.add("is-pouring");
+          if (dstCol < srcCol) {
+            wrapper.classList.add("pour-left");
+          } else if (dstCol > srcCol) {
+            wrapper.classList.add("pour-right");
+          } else {
+            wrapper.classList.add("pour-center");
+          }
+        }
+
+        if (fx && fx.dstIdx === i) {
+          wrapper.classList.add("is-receiving");
+        }
+
+        wrapper.setAttribute("tabindex", "0");
+        wrapper.addEventListener("pointerdown", (function (idx) {
+          return function (event) {
+            if (event.button !== undefined && event.button !== 0) return;
+            event.preventDefault();
+            onTubeClick(idx);
+          };
+        })(i));
+        wrapper.addEventListener("keydown", (function (idx) {
+          return function (event) {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            onTubeClick(idx);
+          };
         })(i));
 
         container.appendChild(wrapper);
@@ -443,6 +506,8 @@
       var moveCount = Math.min(src.topCount, dst.availableSpace);
       if (moveCount === 0) return false;
 
+      if (state.isAnimatingPour) return false;
+
       state.history.push({
         tubesData: tubesToData(state.tubes),
         steps: state.steps,
@@ -450,26 +515,44 @@
         selectedIdx: state.selectedIdx
       });
 
+      var dstStartLayer = dst.colors.length;
       state.tubes[dstIdx].pourFrom(state.tubes[srcIdx]);
       state.steps++;
       state.selectedIdx = -1;
+      state.isAnimatingPour = true;
 
       playPour();
-      renderTubes();
+      renderTubes({
+        srcIdx: srcIdx,
+        dstIdx: dstIdx,
+        moveCount: moveCount,
+        startLayer: dstStartLayer
+      });
       updateGameUI();
 
-      if (isWon(state.tubes)) onWin();
+      state.pourTimerId = setTimeout(function () {
+        state.pourTimerId = 0;
+        finishPourAnimation();
+      }, 500);
       return true;
     }
 
     function onTubeClick(idx) {
       if (!el.winOverlay.hasAttribute("hidden")) return;
       if (!el.menuOverlay.hasAttribute("hidden")) return;
+      var interruptedAnimation = false;
+      if (state.isAnimatingPour) {
+        if (finishPourAnimation({ skipRender: true })) return;
+        interruptedAnimation = true;
+      }
 
       playClick();
 
       if (state.selectedIdx === -1) {
-        if (state.tubes[idx].isEmpty) return;
+        if (state.tubes[idx].isEmpty) {
+          if (interruptedAnimation) renderTubes();
+          return;
+        }
         state.selectedIdx = idx;
         renderTubes();
       } else if (state.selectedIdx === idx) {
@@ -528,6 +611,7 @@
     }
 
     function undo() {
+      if (state.isAnimatingPour && finishPourAnimation({ skipRender: true })) return;
       if (state.history.length === 0) { showToast("没有可撤销的操作"); return; }
       var snap = state.history.pop();
       state.tubes = dataToTubes(snap.tubesData);
@@ -540,12 +624,18 @@
     }
 
     function resetLevel() {
+      if (state.isAnimatingPour && finishPourAnimation({ skipRender: true })) return;
       if (!state.initialData) return;
+      if (state.pourTimerId) {
+        clearTimeout(state.pourTimerId);
+        state.pourTimerId = 0;
+      }
       state.tubes = dataToTubes(state.initialData);
       state.steps = 0;
       state.undoCount = 0;
       state.selectedIdx = -1;
       state.history = [];
+      state.isAnimatingPour = false;
       renderTubes();
       updateGameUI();
       playClick();
@@ -617,8 +707,9 @@
       $("btnUndo").addEventListener("click", undo);
       $("btnReset").addEventListener("click", resetLevel);
 
-      $("gameScreen").querySelector(".tubes-area").addEventListener("click", function (e) {
+      $("gameScreen").addEventListener("click", function (e) {
         if (e.target.closest(".tube-wrapper")) return;
+        if (e.target.closest("button")) return;
         if (state.selectedIdx !== -1) {
           state.selectedIdx = -1;
           renderTubes();

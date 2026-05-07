@@ -2,10 +2,10 @@
   "use strict";
 
   const COLORS = [
-    "#FF4444", "#FF8C00", "#FFD700", "#4CAF50",
-    "#00BCD4", "#2196F3", "#9C27B0", "#FF69B4"
+    "#eb5757", "#f2994a", "#f2c94c", "#27ae60",
+    "#8b5e3c", "#2f80ed", "#9b51e0", "#ff6fae"
   ];
-  const COLOR_NAMES = ["红", "橙", "黄", "绿", "青", "蓝", "紫", "粉"];
+  const COLOR_NAMES = ["红", "橙", "黄", "绿", "棕", "蓝", "紫", "粉"];
   const TUBE_CAPACITY = 4;
   const NUM_COLORS = 8;
   const NUM_EMPTY = 2;
