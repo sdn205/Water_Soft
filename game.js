@@ -565,6 +565,19 @@
     return distractors;
   }
 
+  function countDistinctColorsInTube(tube) {
+    if (tube.isEmpty) return 0;
+    return new Set(tube.colors).size;
+  }
+
+  function hasMinimumTubeColorVariety(tubes, minDistinctColors) {
+    for (const tube of tubes) {
+      if (tube.isEmpty) continue;
+      if (countDistinctColorsInTube(tube) < minDistinctColors) return false;
+    }
+    return true;
+  }
+
   function detectTraps(tubes) {
     const result = bfsSolveFast(tubes, 60, false);
     if (!result.solvable) return { hasTraps: false, trapMoves: [] };
@@ -605,19 +618,7 @@
     };
   }
 
-  function createSeededState(rng) {
-    const pool = [];
-    for (let c = 0; c < NUM_COLORS; c++) {
-      for (let i = 0; i < TUBE_CAPACITY; i++) {
-        pool.push(c);
-      }
-    }
-
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-
+  function buildTubesFromPool(pool) {
     const tubes = [];
     for (let i = 0; i < NUM_TUBES; i++) {
       tubes.push(new Tube([]));
@@ -633,6 +634,56 @@
     return tubes;
   }
 
+  function shuffleInPlace(arr, rng) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+
+  function createDiversifiedFallbackState(rng) {
+    const order = [...Array(NUM_COLORS).keys()];
+    shuffleInPlace(order, rng);
+
+    const offsets = [...Array(NUM_COLORS).keys()];
+    shuffleInPlace(offsets, rng);
+    const selectedOffsets = offsets.slice(0, TUBE_CAPACITY);
+
+    const tubes = [];
+    for (let i = 0; i < NUM_TUBES; i++) {
+      tubes.push(new Tube([]));
+    }
+
+    for (let tubeIdx = 0; tubeIdx < NUM_COLORS; tubeIdx++) {
+      for (let layerIdx = 0; layerIdx < TUBE_CAPACITY; layerIdx++) {
+        const colorIdx = order[(tubeIdx + selectedOffsets[layerIdx]) % NUM_COLORS];
+        tubes[tubeIdx].colors.push(colorIdx);
+      }
+    }
+
+    return tubes;
+  }
+
+  function createSeededState(rng) {
+    const basePool = [];
+    for (let c = 0; c < NUM_COLORS; c++) {
+      for (let i = 0; i < TUBE_CAPACITY; i++) {
+        basePool.push(c);
+      }
+    }
+
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const pool = [...basePool];
+      shuffleInPlace(pool, rng);
+      const tubes = buildTubesFromPool(pool);
+      if (hasMinimumTubeColorVariety(tubes, 3)) {
+        return tubes;
+      }
+    }
+
+    return createDiversifiedFallbackState(rng);
+  }
+
   function createRandomState() {
     return createSeededState(Math.random);
   }
@@ -641,6 +692,8 @@
     if (isWon(tubes)) return false;
 
     if (countSingleColorTubes(tubes) > 0) return false;
+
+    if (!hasMinimumTubeColorVariety(tubes, 3)) return false;
 
     const colorTubes = new Array(NUM_COLORS).fill(0).map(() => new Set());
     for (let i = 0; i < tubes.length; i++) {
@@ -766,6 +819,8 @@
     detectTraps,
     countSingleColorTubes,
     countDistractorColors,
+    countDistinctColorsInTube,
+    hasMinimumTubeColorVariety,
     evaluateLevel,
     generateLevelSync,
     generateLevelQuick,
