@@ -4,6 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b74c9" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="颜色分类" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180.png" />
   <title>颜色分类</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
@@ -355,6 +360,15 @@
       return isWechatBrowser() || isQQBrowser();
     }
 
+    function isSecureOrigin() {
+      var p = (location && location.protocol || "").toLowerCase();
+      return p === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    }
+
+    function canTryOneTapInstall() {
+      return !isEmbeddedBrowser() && isSecureOrigin() && !!deferredInstallPrompt;
+    }
+
     function isStandaloneMode() {
       var iosStandalone = typeof navigator.standalone === "boolean" ? navigator.standalone : false;
       var displayModeStandalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
@@ -376,13 +390,19 @@
         return;
       }
 
-      if (deferredInstallPrompt) {
+      if (canTryOneTapInstall()) {
         el.btnAddToHome.textContent = "一键添加到主屏幕";
         el.btnAddToHome.disabled = false;
         return;
       }
 
-      el.btnAddToHome.textContent = "当前浏览器不支持一键添加";
+      if (!isSecureOrigin()) {
+        el.btnAddToHome.textContent = "需 HTTPS/localhost 才能一键添加";
+        el.btnAddToHome.disabled = true;
+        return;
+      }
+
+      el.btnAddToHome.textContent = "等待浏览器提供安装入口";
       el.btnAddToHome.disabled = true;
     }
 
@@ -716,6 +736,10 @@
       updateSettingsUI();
       updateAddToHomeButton();
 
+      if ("serviceWorker" in navigator && isSecureOrigin()) {
+        navigator.serviceWorker.register("./sw.js").catch(function () {});
+      }
+
       window.addEventListener("beforeinstallprompt", function (e) {
         e.preventDefault();
         deferredInstallPrompt = e;
@@ -830,7 +854,7 @@
           showToast("微信/QQ 内置浏览器不支持一键添加");
           return;
         }
-        if (deferredInstallPrompt) {
+        if (canTryOneTapInstall()) {
           deferredInstallPrompt.prompt();
           try {
             var choice = await deferredInstallPrompt.userChoice;
@@ -842,7 +866,11 @@
           updateAddToHomeButton();
           return;
         }
-        showToast("当前浏览器不支持一键添加");
+        if (!isSecureOrigin()) {
+          showToast("请改用 HTTPS 或 localhost 访问后再一键添加");
+          return;
+        }
+        showToast("浏览器暂未给出安装入口，请稍等或刷新后重试");
       });
 
       $("settingsBack").addEventListener("click", function () {
