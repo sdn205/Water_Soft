@@ -25,6 +25,7 @@
         </button>
       </div>
       <div class="start-footer">
+        <button id="btnAddToHome" class="secondary-button footer-btn" type="button">保存到主屏幕</button>
         <button id="btnSettings" class="secondary-button footer-btn" type="button">设置</button>
       </div>
     </section>
@@ -164,6 +165,7 @@
       isAnimatingPour: false,
       pourTimerId: 0
     };
+    var deferredInstallPrompt = null;
 
     var levelPage = 0;
 
@@ -188,6 +190,7 @@
       winBest: $("winBest"),
       menuOverlay: $("menuOverlay"),
       toast: $("toast"),
+      btnAddToHome: $("btnAddToHome"),
       btnSoundToggle: $("btnSoundToggle"),
       btnVividToggle: $("btnVividToggle")
     };
@@ -338,6 +341,10 @@
         el.toast.classList.remove("toast-show");
         setTimeout(function () { el.toast.setAttribute("hidden", ""); }, 300);
       }, 1500);
+    }
+
+    function isWechatBrowser() {
+      return /micromessenger/i.test(navigator.userAgent || "");
     }
 
     function updateStartScreen() {
@@ -669,6 +676,11 @@
       updateStartScreen();
       updateSettingsUI();
 
+      window.addEventListener("beforeinstallprompt", function (e) {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+      });
+
       $("btnStartGame").addEventListener("click", function () {
         playClick();
         startLevel(state.maxUnlocked);
@@ -760,6 +772,23 @@
         playClick();
         showScreen("settingsScreen");
         updateSettingsUI();
+      });
+
+      el.btnAddToHome.addEventListener("click", async function () {
+        playClick();
+        if (deferredInstallPrompt) {
+          deferredInstallPrompt.prompt();
+          try {
+            await deferredInstallPrompt.userChoice;
+          } catch (e) {}
+          deferredInstallPrompt = null;
+          return;
+        }
+        if (isWechatBrowser()) {
+          showToast("微信内通常不支持直接添加，请右上角打开到系统浏览器后再添加");
+          return;
+        }
+        showToast("请使用浏览器菜单中的“添加到主屏幕”");
       });
 
       $("settingsBack").addEventListener("click", function () {
