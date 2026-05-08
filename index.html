@@ -347,6 +347,45 @@
       return /micromessenger/i.test(navigator.userAgent || "");
     }
 
+    function isQQBrowser() {
+      return /\bqq\/|mqqbrowser/i.test(navigator.userAgent || "");
+    }
+
+    function isEmbeddedBrowser() {
+      return isWechatBrowser() || isQQBrowser();
+    }
+
+    function isStandaloneMode() {
+      var iosStandalone = typeof navigator.standalone === "boolean" ? navigator.standalone : false;
+      var displayModeStandalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+      return !!(iosStandalone || displayModeStandalone);
+    }
+
+    function updateAddToHomeButton() {
+      if (!el.btnAddToHome) return;
+
+      if (isStandaloneMode()) {
+        el.btnAddToHome.textContent = "已添加到主屏幕";
+        el.btnAddToHome.disabled = true;
+        return;
+      }
+
+      if (isEmbeddedBrowser()) {
+        el.btnAddToHome.textContent = "内置浏览器不支持";
+        el.btnAddToHome.disabled = true;
+        return;
+      }
+
+      if (deferredInstallPrompt) {
+        el.btnAddToHome.textContent = "一键添加到主屏幕";
+        el.btnAddToHome.disabled = false;
+        return;
+      }
+
+      el.btnAddToHome.textContent = "当前浏览器不支持一键添加";
+      el.btnAddToHome.disabled = true;
+    }
+
     function updateStartScreen() {
       el.startProgress.textContent = "第 " + state.maxUnlocked + " 关";
     }
@@ -675,10 +714,17 @@
       loadProgress();
       updateStartScreen();
       updateSettingsUI();
+      updateAddToHomeButton();
 
       window.addEventListener("beforeinstallprompt", function (e) {
         e.preventDefault();
         deferredInstallPrompt = e;
+        updateAddToHomeButton();
+      });
+
+      window.addEventListener("appinstalled", function () {
+        deferredInstallPrompt = null;
+        updateAddToHomeButton();
       });
 
       $("btnStartGame").addEventListener("click", function () {
@@ -776,19 +822,27 @@
 
       el.btnAddToHome.addEventListener("click", async function () {
         playClick();
+        if (isStandaloneMode()) {
+          showToast("已经在主屏幕中");
+          return;
+        }
+        if (isEmbeddedBrowser()) {
+          showToast("微信/QQ 内置浏览器不支持一键添加");
+          return;
+        }
         if (deferredInstallPrompt) {
           deferredInstallPrompt.prompt();
           try {
-            await deferredInstallPrompt.userChoice;
+            var choice = await deferredInstallPrompt.userChoice;
+            if (choice && choice.outcome === "accepted") {
+              showToast("已发起添加，请按提示完成");
+            }
           } catch (e) {}
           deferredInstallPrompt = null;
+          updateAddToHomeButton();
           return;
         }
-        if (isWechatBrowser()) {
-          showToast("微信内通常不支持直接添加，请右上角打开到系统浏览器后再添加");
-          return;
-        }
-        showToast("请使用浏览器菜单中的“添加到主屏幕”");
+        showToast("当前浏览器不支持一键添加");
       });
 
       $("settingsBack").addEventListener("click", function () {
