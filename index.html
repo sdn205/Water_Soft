@@ -86,6 +86,10 @@
           <button id="btnSoundToggle" class="secondary-button" type="button">开</button>
         </div>
         <div class="settings-item">
+          <span>鲜艳颜色</span>
+          <button id="btnVividToggle" class="secondary-button" type="button">关</button>
+        </div>
+        <div class="settings-item">
           <span>重置全部进度</span>
           <button id="btnResetProgress" class="danger-button" type="button">重置</button>
         </div>
@@ -135,6 +139,7 @@
     var TUBE_CAPACITY = api.TUBE_CAPACITY;
     var NUM_TUBES = api.NUM_TUBES;
     var COLORS = api.COLORS;
+    var VIVID_COLORS = ["#ff174f", "#ff8a00", "#ffee32", "#00c853", "#9c5a18", "#006dff", "#8d2bff", "#ff1fa8"];
     var isWon = api.isWon;
     var cloneTubes = api.cloneTubes;
     var tubesToData = api.tubesToData;
@@ -153,6 +158,7 @@
       currentLevel: 1,
       maxUnlocked: 1,
       soundEnabled: true,
+      vividColorsEnabled: false,
       bestSteps: {},
       bestUndos: {},
       isAnimatingPour: false,
@@ -182,7 +188,8 @@
       winBest: $("winBest"),
       menuOverlay: $("menuOverlay"),
       toast: $("toast"),
-      btnSoundToggle: $("btnSoundToggle")
+      btnSoundToggle: $("btnSoundToggle"),
+      btnVividToggle: $("btnVividToggle")
     };
 
     var audioCtx = null;
@@ -224,6 +231,7 @@
           state.currentLevel = d.currentLevel || 1;
           state.maxUnlocked = d.maxUnlocked || 1;
           state.soundEnabled = d.soundEnabled !== false;
+          state.vividColorsEnabled = d.vividColorsEnabled === true;
           state.bestSteps = d.bestSteps || {};
           state.bestUndos = d.bestUndos || {};
         }
@@ -236,6 +244,7 @@
           currentLevel: state.currentLevel,
           maxUnlocked: state.maxUnlocked,
           soundEnabled: state.soundEnabled,
+          vividColorsEnabled: state.vividColorsEnabled,
           bestSteps: state.bestSteps,
           bestUndos: state.bestUndos
         }));
@@ -335,6 +344,15 @@
       el.startProgress.textContent = "第 " + state.maxUnlocked + " 关";
     }
 
+    function getTubeDisplayColor(colorIdx) {
+      return state.vividColorsEnabled ? VIVID_COLORS[colorIdx] : COLORS[colorIdx];
+    }
+
+    function updateSettingsUI() {
+      el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+      el.btnVividToggle.textContent = state.vividColorsEnabled ? "开" : "关";
+    }
+
     function finishPourAnimation(options) {
       options = options || {};
       if (!state.isAnimatingPour) return false;
@@ -416,9 +434,10 @@
           if (colorIdx !== null) {
             var sameBelow = layer > 0 && tube.colors[layer - 1] === colorIdx;
             var sameAbove = layer + 1 < tube.colors.length && tube.colors[layer + 1] === colorIdx;
+            var displayColor = getTubeDisplayColor(colorIdx);
             cell.classList.add("filled");
-            cell.style.backgroundColor = COLORS[colorIdx];
-            cell.style.setProperty("--liquid-color", COLORS[colorIdx]);
+            cell.style.backgroundColor = displayColor;
+            cell.style.setProperty("--liquid-color", displayColor);
             if (layer === 0) cell.classList.add("bottom-layer");
             if (layer === tube.colors.length - 1) cell.classList.add("top-layer");
             if (sameBelow) cell.classList.add("joined-below");
@@ -648,7 +667,7 @@
     function init() {
       loadProgress();
       updateStartScreen();
-      el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+      updateSettingsUI();
 
       $("btnStartGame").addEventListener("click", function () {
         playClick();
@@ -740,7 +759,7 @@
       $("btnSettings").addEventListener("click", function () {
         playClick();
         showScreen("settingsScreen");
-        el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+        updateSettingsUI();
       });
 
       $("settingsBack").addEventListener("click", function () {
@@ -750,9 +769,17 @@
 
       el.btnSoundToggle.addEventListener("click", function () {
         state.soundEnabled = !state.soundEnabled;
-        el.btnSoundToggle.textContent = state.soundEnabled ? "开" : "关";
+        updateSettingsUI();
         saveProgress();
         if (state.soundEnabled) playClick();
+      });
+
+      el.btnVividToggle.addEventListener("click", function () {
+        state.vividColorsEnabled = !state.vividColorsEnabled;
+        updateSettingsUI();
+        if (state.tubes.length > 0) renderTubes();
+        saveProgress();
+        playClick();
       });
 
       $("btnResetProgress").addEventListener("click", function () {
